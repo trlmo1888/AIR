@@ -378,6 +378,7 @@
         <div>Estado: <span id="debugListening">apagado</span></div>
         <div>Oyendo ahora: <span id="debugHeard">—</span></div>
         <div>Última ubicación capturada: <span id="debugCaptured" style="color:#34C759; font-weight:600;">ninguna</span></div>
+        <div>Búsqueda del sitio: <span id="debugGeocode" style="color:#0A84FF;">—</span></div>
       </div>
 
       <div class="modal-actions">
@@ -400,35 +401,49 @@ var realLocationKnown = false;
 var currentLocationLabel = "Casa";
 var currentTimeLabel = "Ahora";
 
-/* pequeño catálogo local de ciudades por si falla la geocodificación online */
+/* catálogo local de ciudades por si falla la geocodificación online
+   (por ejemplo, al probar el archivo abierto en local con file://) */
 var CITY_DB = [
  ["madrid",40.4168,-3.7038],["barcelona",41.3874,2.1686],["valencia",39.4699,-0.3763],
  ["sevilla",37.3891,-5.9845],["bilbao",43.2630,-2.9350],["zaragoza",41.6488,-0.8891],
- ["malaga",36.7213,-4.4214],["paris",48.8566,2.3522],["londres",51.5072,-0.1276],
- ["london",51.5072,-0.1276],["roma",41.9028,12.4964],["berlin",52.5200,13.4050],
- ["lisboa",38.7223,-9.1393],["amsterdam",52.3676,4.9041],["nueva york",40.7128,-74.0060],
- ["new york",40.7128,-74.0060],["tokio",35.6762,139.6503],["tokyo",35.6762,139.6503],
- ["moscu",55.7558,37.6173],["el cairo",30.0444,31.2357],["cairo",30.0444,31.2357],
- ["sidney",-33.8688,151.2093],["sydney",-33.8688,151.2093],["buenos aires",-34.6037,-58.3816],
- ["mexico",19.4326,-99.1332],["ciudad de mexico",19.4326,-99.1332],["bogota",4.7110,-74.0721],
- ["lima",-12.0464,-77.0428],["santiago",-33.4489,-70.6693],["rio de janeiro",-22.9068,-43.1729],
- ["sao paulo",-23.5505,-46.6333],["miami",25.7617,-80.1918],["los angeles",34.0522,-118.2437],
- ["chicago",41.8781,-87.6298],["toronto",43.6532,-79.3832],["dubai",25.2048,55.2708],
- ["estambul",41.0082,28.9784],["istanbul",41.0082,28.9784],["atenas",37.9838,23.7275],
- ["viena",48.2082,16.3738],["praga",50.0755,14.4378],["dublin",53.3498,-6.2603],
- ["oslo",59.9139,10.7522],["estocolmo",59.3293,18.0686],["helsinki",60.1699,24.9384],
- ["varsovia",52.2297,21.0122],["budapest",47.4979,19.0402],["bruselas",50.8503,4.3517],
- ["copenhague",55.6761,12.5683],["shanghai",31.2304,121.4737],["pekin",39.9042,116.4074],
- ["beijing",39.9042,116.4074],["hong kong",22.3193,114.1694],["singapur",1.3521,103.8198],
- ["bangkok",13.7563,100.5018],["seul",37.5665,126.9780],["mumbai",19.0760,72.8777],
- ["delhi",28.7041,77.1025],["nueva delhi",28.6139,77.2090],["johannesburgo",-26.2041,28.0473],
- ["ciudad del cabo",-33.9249,18.4241],["casablanca",33.5731,-7.5898],["marrakech",31.6295,-7.9811]
+ ["malaga",36.7213,-4.4214],["donosti",43.3183,-1.9812],["san sebastian",43.3183,-1.9812],
+ ["vitoria",42.8467,-2.6716],["pamplona",42.8125,-1.6458],["santander",43.4623,-3.8100],
+ ["gijon",43.5322,-5.6611],["oviedo",43.3603,-5.8448],["a coruña",43.3623,-8.4115],
+ ["vigo",42.2406,-8.7207],["logroño",42.4650,-2.4456],["burgos",42.3439,-3.6969],
+ ["salamanca",40.9701,-5.6635],["granada",37.1773,-3.5986],["cordoba",37.8882,-4.7794],
+ ["cadiz",36.5164,-6.2994],["murcia",37.9922,-1.1307],["alicante",38.3452,-0.4810],
+ ["palma",39.5696,2.6502],["las palmas",28.1235,-15.4363],["tenerife",28.4636,-16.2518],
+ ["paris",48.8566,2.3522],["londres",51.5072,-0.1276],["london",51.5072,-0.1276],
+ ["roma",41.9028,12.4964],["berlin",52.5200,13.4050],["milan",45.4642,9.1900],
+ ["lisboa",38.7223,-9.1393],["oporto",41.1579,-8.6291],["amsterdam",52.3676,4.9041],
+ ["nueva york",40.7128,-74.0060],["new york",40.7128,-74.0060],["tokio",35.6762,139.6503],
+ ["tokyo",35.6762,139.6503],["moscu",55.7558,37.6173],["el cairo",30.0444,31.2357],
+ ["cairo",30.0444,31.2357],["sidney",-33.8688,151.2093],["sydney",-33.8688,151.2093],
+ ["buenos aires",-34.6037,-58.3816],["mexico",19.4326,-99.1332],["ciudad de mexico",19.4326,-99.1332],
+ ["bogota",4.7110,-74.0721],["lima",-12.0464,-77.0428],["santiago",-33.4489,-70.6693],
+ ["rio de janeiro",-22.9068,-43.1729],["sao paulo",-23.5505,-46.6333],["miami",25.7617,-80.1918],
+ ["los angeles",34.0522,-118.2437],["chicago",41.8781,-87.6298],["toronto",43.6532,-79.3832],
+ ["dubai",25.2048,55.2708],["estambul",41.0082,28.9784],["istanbul",41.0082,28.9784],
+ ["atenas",37.9838,23.7275],["viena",48.2082,16.3738],["praga",50.0755,14.4378],
+ ["dublin",53.3498,-6.2603],["oslo",59.9139,10.7522],["estocolmo",59.3293,18.0686],
+ ["helsinki",60.1699,24.9384],["varsovia",52.2297,21.0122],["budapest",47.4979,19.0402],
+ ["bruselas",50.8503,4.3517],["copenhague",55.6761,12.5683],["shanghai",31.2304,121.4737],
+ ["pekin",39.9042,116.4074],["beijing",39.9042,116.4074],["hong kong",22.3193,114.1694],
+ ["singapur",1.3521,103.8198],["bangkok",13.7563,100.5018],["seul",37.5665,126.9780],
+ ["mumbai",19.0760,72.8777],["delhi",28.7041,77.1025],["nueva delhi",28.6139,77.2090],
+ ["johannesburgo",-26.2041,28.0473],["ciudad del cabo",-33.9249,18.4241],["casablanca",33.5731,-7.5898],
+ ["marrakech",31.6295,-7.9811],["rabat",34.0209,-6.8417],["marsella",43.2965,5.3698],
+ ["niza",43.7102,7.2620],["florencia",43.7696,11.2558],["venecia",45.4408,12.3155],
+ ["napoles",40.8518,14.2681],["munich",48.1351,11.5820],["hamburgo",53.5511,9.9937],
+ ["frankfurt",50.1109,8.6821],["zurich",47.3769,8.5417],["ginebra",46.2044,6.1432],
+ ["edimburgo",55.9533,-3.1883],["manchester",53.4808,-2.2426],["cracovia",50.0647,19.9450],
+ ["kiev",50.4501,30.5234],["varsovia",52.2297,21.0122],["tanger",35.7595,-5.8340]
 ];
 
 var COUNTRY_TO_CAPITAL = {
   "francia":"paris","espana":"madrid","españa":"madrid","italia":"roma","alemania":"berlin",
   "portugal":"lisboa","inglaterra":"londres","reino unido":"londres","holanda":"amsterdam",
-  "paises bajos":"amsterdam","belgica":"bruselas","austria":"viena","suiza":"berna",
+  "paises bajos":"amsterdam","belgica":"bruselas","austria":"viena","suiza":"zurich",
   "grecia":"atenas","irlanda":"dublin","noruega":"oslo","suecia":"estocolmo","finlandia":"helsinki",
   "polonia":"varsovia","hungria":"budapest","dinamarca":"copenhague","turquia":"estambul",
   "rusia":"moscu","egipto":"el cairo","china":"pekin","japon":"tokio","corea del sur":"seul",
@@ -436,7 +451,7 @@ var COUNTRY_TO_CAPITAL = {
   "australia":"sidney","estados unidos":"nueva york","ee uu":"nueva york","eeuu":"nueva york",
   "canada":"toronto","mexico":"ciudad de mexico","argentina":"buenos aires","colombia":"bogota",
   "peru":"lima","chile":"santiago","brasil":"rio de janeiro","sudafrica":"johannesburgo",
-  "marruecos":"casablanca"
+  "marruecos":"casablanca","ucrania":"kiev"
 };
 
 function norm(s){
@@ -452,7 +467,12 @@ function localLookup(q){
   }
   return null;
 }
+
+var lastGeocodeAttempt = ''; // para depuración
+
 async function geocode(q){
+  lastGeocodeAttempt = q + ' → buscando…';
+  updateDebugUI();
   var n = norm(q);
   var resolvedName = q;
   if (COUNTRY_TO_CAPITAL[n]){
@@ -463,9 +483,23 @@ async function geocode(q){
     var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(resolvedName);
     var res = await fetch(url, {headers:{"Accept-Language":"es"}});
     var data = await res.json();
-    if (data && data[0]) return {name:resolvedName, lat:parseFloat(data[0].lat), lng:parseFloat(data[0].lon)};
-  }catch(e){}
-  return localLookup(resolvedName);
+    if (data && data[0]){
+      lastGeocodeAttempt = q + ' → encontrado en línea (' + resolvedName + ')';
+      updateDebugUI();
+      return {name:resolvedName, lat:parseFloat(data[0].lat), lng:parseFloat(data[0].lon)};
+    }
+  }catch(e){
+    lastGeocodeAttempt = q + ' → falló la búsqueda en línea (' + e.message + '), probando lista local…';
+    updateDebugUI();
+  }
+  var local = localLookup(resolvedName);
+  if (local){
+    lastGeocodeAttempt = q + ' → encontrado en la lista local';
+  } else {
+    lastGeocodeAttempt = q + ' → NO ENCONTRADO en ningún sitio';
+  }
+  updateDebugUI();
+  return local;
 }
 
 /* ============ Mapa (Leaflet + teselas claras estilo Apple Maps) ============ */
@@ -814,6 +848,7 @@ function updateDebugUI(){
   var elHeard = document.getElementById('debugHeard');
   var elCaptured = document.getElementById('debugCaptured');
   var elMode = document.getElementById('debugMode');
+  var elGeocode = document.getElementById('debugGeocode');
   if (!elListening) return; // el modal aún no está en el DOM la primera vez
   elListening.textContent = isListening ? 'escuchando…' : 'apagado';
   elListening.style.color = isListening ? '#34C759' : '#8e8e93';
@@ -825,6 +860,10 @@ function updateDebugUI(){
     elMode.textContent = voiceMode === 'native'
       ? 'reconocimiento automático (Chrome)'
       : 'dictado del teclado (Safari / Firefox)';
+  }
+  if (elGeocode){
+    elGeocode.textContent = lastGeocodeAttempt || '—';
+    elGeocode.style.color = /NO ENCONTRADO|falló/.test(lastGeocodeAttempt) ? '#FF453A' : '#0A84FF';
   }
 }
 
