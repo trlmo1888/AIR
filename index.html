@@ -4,6 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Buscar</title>
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Buscar">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
   :root{
@@ -288,33 +292,12 @@
   <div id="map"></div>
 
   <div class="brand" id="brandIcon" title="">
-    <svg viewBox="0 0 100 100" width="40" height="40">
-      <defs>
-        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#e5e5e7"/><stop offset="1" stop-color="#c7c7cb"/>
-        </linearGradient>
-        <linearGradient id="ring1" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#37e08b"/><stop offset="1" stop-color="#0fa968"/>
-        </linearGradient>
-        <linearGradient id="ring2" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#3fe6c8"/><stop offset="1" stop-color="#1fb896"/>
-        </linearGradient>
-        <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#7fd0ff"/><stop offset="1" stop-color="#0a84ff"/>
-        </linearGradient>
-      </defs>
-      <rect width="100" height="100" rx="22" fill="url(#bg)"/>
-      <circle cx="50" cy="50" r="38" fill="url(#ring1)"/>
-      <path d="M50 12 A38 38 0 0 1 84 42 L50 50 Z" fill="url(#ring2)" opacity="0.85"/>
-      <circle cx="50" cy="50" r="24" fill="#1f8a52" opacity="0.35"/>
-      <circle cx="50" cy="50" r="15" fill="#fff" opacity="0.9"/>
-      <circle cx="50" cy="50" r="11" fill="url(#dot)"/>
-    </svg>
+    <img src="icon-180.png" alt="" width="40" height="40" style="display:block; width:40px; height:40px; border-radius:10px;">
   </div>
 
-  <div id="dictationBar" style="display:none; position:fixed; right:2px; bottom:2px; z-index:415; width:1px; height:1px; overflow:hidden; opacity:0.02;">
+  <div id="dictationBar" style="display:none; position:fixed; right:6px; bottom:6px; z-index:415; width:10px; height:10px; overflow:hidden; opacity:0.06; border-radius:2px;">
     <input id="dictationInput" type="text" autocomplete="off" autocorrect="off" spellcheck="false"
-      style="width:1px; height:1px; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:1px; outline:none;">
+      style="width:10px; height:10px; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:1px; outline:none;">
   </div>
 
   <div class="map-controls">
@@ -780,6 +763,13 @@ function processTranscript(transcript){
 
   words.forEach(function(w){
     if (w === nw){
+      // Si ya hay una ciudad capturada esperando a que toques "Yo", ignoramos
+      // cualquier "ok" posterior de la conversación: así, aunque sigas
+      // hablando después, no se sobrescribe con palabras sueltas.
+      if (pendingLocationTerm){
+        wordBuffer = [];
+        return;
+      }
       var candidates = wordBuffer.filter(function(x){ return STOPWORDS.indexOf(x) === -1; });
       var take = candidates.slice(Math.max(0, candidates.length - 3));
       if (take.length){
@@ -787,6 +777,9 @@ function processTranscript(transcript){
         pendingLocationTerm = raw.replace(/\b\w/g, function(c){ return c.toUpperCase(); });
         lastCapturedAt = Date.now();
         vibrateConfirm();
+        // Captura hecha: apagamos el micrófono del todo. No se reactiva
+        // solo hasta que vuelvas a tocar el botón.
+        stopListening();
       }
       wordBuffer = [];
     } else {
@@ -837,6 +830,7 @@ function updateDebugUI(){
 
 /* ---------- Modo nativo: Chrome / Edge / navegadores basados en Chromium ---------- */
 var lastResultAt = 0;
+var interimProcessedLen = {};
 var restartTimer = null;
 var watchdogTimer = null;
 
@@ -870,14 +864,32 @@ function launchRecognitionInstance(){
 
   recognition.onstart = function(){
     lastResultAt = Date.now();
+    interimProcessedLen = {};
   };
   recognition.onresult = function(event){
     lastResultAt = Date.now();
     for (var i = event.resultIndex; i < event.results.length; i++){
+      var transcript = event.results[i][0].transcript;
       if (event.results[i].isFinal){
-        processTranscript(event.results[i][0].transcript);
+        var prevLen = interimProcessedLen[i] || 0;
+        var delta = transcript.slice(prevLen);
+        if (delta.trim()) processTranscript(delta);
+        delete interimProcessedLen[i];
+        lastHeardRaw = transcript;
+        updateDebugUI();
       } else {
-        lastHeardRaw = event.results[i][0].transcript;
+        // No esperamos a que la frase se "cierre": en cuanto el motor
+        // reconoce una palabra nueva (aunque sea provisional), la miramos
+        // ya mismo. Así no se escapa la palabra mágica por una pausa.
+        var prevLen = interimProcessedLen[i] || 0;
+        if (transcript.length >= prevLen){
+          var delta = transcript.slice(prevLen);
+          interimProcessedLen[i] = transcript.length;
+          if (delta.trim()) processTranscript(delta);
+        } else {
+          interimProcessedLen[i] = 0; // el motor revisó/acortó el texto: reiniciamos el conteo
+        }
+        lastHeardRaw = transcript;
         updateDebugUI();
       }
     }
@@ -956,15 +968,9 @@ dictationInput.addEventListener('input', function(){
   var delta = val.slice(dictationProcessedLen);
   dictationProcessedLen = val.length;
 
-  var hadPending = pendingLocationTerm;
   if (delta.trim()) processTranscript(delta);
   lastHeardRaw = val;
   updateDebugUI();
-
-  if (!hadPending && pendingLocationTerm){
-    // se acaba de capturar la ubicación: paramos solos, ya no hace falta seguir grabando
-    stopDictationListening();
-  }
 
   // si el campo empieza a crecer demasiado, lo vaciamos (ya está todo procesado)
   if (dictationInput.value.length > 200){
