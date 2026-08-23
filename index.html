@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Buscar</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  :root{
+    --tab-blue:#0A84FF;
+    --tab-gray:#8E8E93;
+    --sheet-bg: rgba(28,28,30,0.86);
+    --sheet-bg-solid:#1c1c1e;
+    --divider: rgba(255,255,255,0.09);
+    --green:#34C759;
+    --green2:#30D158;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; padding:0; width:100%; height:100%; overflow:hidden;
+    background:#000;
+    font-family:-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    color:#fff;
+    user-select:none;
+    -webkit-user-select:none;
+  }
+  #app{
+    position:fixed; inset:0;
+    display:flex; flex-direction:column;
+    background:#000;
+  }
+
+  /* ---------- Map ---------- */
+  #map{
+    position:absolute; inset:0;
+    background:#c8e0d8;
+  }
+  .leaflet-container{ background:#c8e0d8; font-family:inherit;}
+
+  /* ---------- Floating top-right controls ---------- */
+  .map-controls{
+    position:absolute; right:14px;
+    top: calc(env(safe-area-inset-top,14px) + 12px);
+    display:flex; flex-direction:column; gap:10px;
+    z-index:410;
+  }
+  .map-btn{
+    width:44px; height:44px; border-radius:10px;
+    background:rgba(50,50,52,0.78);
+    backdrop-filter: blur(14px) saturate(1.5);
+    -webkit-backdrop-filter: blur(14px) saturate(1.5);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 2px 10px rgba(0,0,0,0.35);
+    border:0.5px solid rgba(255,255,255,0.08);
+  }
+  .map-btn svg{width:20px;height:20px;}
+  .map-btn.accent svg{ }
+
+  /* ---------- App icon / brand mark (secret trigger) ---------- */
+  .brand{
+    position:absolute; left:16px;
+    top: calc(env(safe-area-inset-top,14px) + 12px);
+    width:40px; height:40px; border-radius:10px;
+    z-index:420;
+    overflow:hidden;
+    box-shadow:0 2px 8px rgba(0,0,0,0.4);
+  }
+
+  /* ---------- Bottom sheet ---------- */
+  .sheet-wrap{
+    position:absolute; left:0; right:0; bottom:0;
+    z-index:450;
+    display:flex; flex-direction:column;
+    pointer-events:none;
+  }
+  .sheet{
+    pointer-events:auto;
+    background:var(--sheet-bg);
+    backdrop-filter: blur(26px) saturate(1.6);
+    -webkit-backdrop-filter: blur(26px) saturate(1.6);
+    border-radius:14px 14px 0 0;
+    padding-top:8px;
+    box-shadow:0 -2px 24px rgba(0,0,0,0.4);
+    max-height:66vh;
+    overflow-y:auto;
+    overscroll-behavior:contain;
+  }
+  .grabber{
+    width:36px; height:5px; border-radius:3px;
+    background:rgba(255,255,255,0.34);
+    margin:0 auto 6px auto;
+  }
+  .sheet-header{
+    font-size:28px; font-weight:700; letter-spacing:0.2px;
+    padding:6px 20px 12px 20px;
+  }
+  .sheet-body{ padding: 0 16px 10px 16px; }
+
+  /* People row */
+  .people-row{ display:flex; gap:14px; padding:6px 4px 18px 4px; overflow-x:auto; }
+  .avatar{
+    width:56px; height:56px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:26px; flex:0 0 auto;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+  .share-btn{
+    width:100%; text-align:center; padding:14px 0; border-radius:12px;
+    background:rgba(118,118,128,0.24); color:var(--tab-blue);
+    font-size:16px; font-weight:600; margin-bottom:10px; letter-spacing:0.1px;
+  }
+
+  /* Generic list card */
+  .card{
+    background:rgba(118,118,128,0.16);
+    border-radius:12px; margin-bottom:12px; overflow:hidden;
+  }
+  .list-row{
+    display:flex; align-items:center; gap:12px;
+    padding:12px 14px; border-bottom:1px solid var(--divider);
+    min-height:56px;
+  }
+  .list-row:last-child{border-bottom:none;}
+  .icon-badge{
+    width:34px;height:34px;border-radius:8px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .icon-badge.round{border-radius:50%;}
+  .row-text{flex:1; min-width:0;}
+  .row-title{font-size:16px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .row-sub{font-size:13px; color:var(--tab-gray); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .row-chev{color:#48484a; font-size:14px;}
+
+  .kv-row{
+    display:flex; align-items:center; justify-content:space-between;
+    padding:12px 14px; border-bottom:1px solid var(--divider); min-height:44px;
+  }
+  .kv-row:last-child{border-bottom:none;}
+  .kv-label{font-size:16px;}
+  .kv-value{font-size:16px; color:var(--tab-gray); display:flex; align-items:center; gap:4px;}
+  .kv-value.link{color:#FF453A;}
+
+  .card-head{
+    display:flex; align-items:center; gap:10px;
+    padding:12px 14px 4px 14px; font-size:16px; font-weight:600;
+  }
+  .card-head .icon-badge{width:26px;height:26px;}
+
+  .toggle{
+    width:51px; height:31px; border-radius:16px; position:relative; flex:0 0 auto;
+    transition:background .18s ease;
+  }
+  .toggle::after{
+    content:""; position:absolute; top:2px; left:2px; width:27px; height:27px; border-radius:50%;
+    background:#fff; box-shadow:0 2px 4px rgba(0,0,0,0.3); transition:left .18s ease;
+  }
+  .toggle.on{background:var(--green2);}
+  .toggle.on::after{left:22px;}
+  .toggle.off{background:rgba(120,120,128,0.32);}
+
+  .empty-hint{
+    padding:30px 10px 10px 10px; text-align:center; color:var(--tab-gray); font-size:14px; line-height:1.5;
+  }
+
+  /* ---------- Tab bar ---------- */
+  .tabbar{
+    pointer-events:auto;
+    display:flex;
+    background:rgba(28,28,30,0.86);
+    backdrop-filter: blur(26px) saturate(1.6);
+    -webkit-backdrop-filter: blur(26px) saturate(1.6);
+    border-top:0.5px solid rgba(255,255,255,0.08);
+    padding-bottom: env(safe-area-inset-bottom, 4px);
+  }
+  .tab{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:3px;
+    padding-top:7px; padding-bottom:4px; color:var(--tab-gray);
+  }
+  .tab svg{width:25px;height:25px;}
+  .tab span{font-size:10px; font-weight:500;}
+  .tab.active{ color:var(--tab-blue); }
+
+  /* ---------- Map pins ---------- */
+  .me-pin{
+    width:22px;height:22px;border-radius:50%;
+    background:var(--tab-blue);
+    border:3px solid #fff;
+    box-shadow:0 0 0 4px rgba(10,132,255,0.28), 0 2px 6px rgba(0,0,0,0.4);
+  }
+  .home-pin{
+    width:30px;height:30px;border-radius:50%;
+    background:var(--tab-blue);
+    display:flex;align-items:center;justify-content:center;
+    border:2.5px solid #fff; box-shadow:0 2px 6px rgba(0,0,0,0.4);
+  }
+  .found-pin{
+    width:22px;height:22px;border-radius:50%;
+    background:var(--tab-blue);
+    display:flex;align-items:center;justify-content:center;
+    border:3px solid #fff; box-shadow:0 0 0 4px rgba(10,132,255,0.28), 0 2px 6px rgba(0,0,0,0.4);
+    animation:pinpop .4s cubic-bezier(.2,1.4,.4,1);
+  }
+  @keyframes pinpop{ from{transform:scale(0.3); opacity:0;} to{transform:scale(1); opacity:1;} }
+
+  .pulse-ring{
+    position:absolute; border-radius:50%;
+    border:2px solid rgba(10,132,255,0.55);
+    animation:pulse 1.8s ease-out infinite;
+  }
+  @keyframes pulse{
+    0%{transform:scale(0.4); opacity:0.9;}
+    100%{transform:scale(2.4); opacity:0;}
+  }
+
+  /* ---------- Flicker / locating overlay ---------- */
+  #locate-overlay{
+    position:absolute; inset:0; z-index:900;
+    display:none; align-items:center; justify-content:center;
+    background:#000;
+    flex-direction:column; gap:18px;
+  }
+  #locate-overlay .radar{
+    width:88px; height:88px;
+  }
+  #locate-overlay .msg{
+    font-size:15px; color:rgba(255,255,255,0.75); letter-spacing:0.3px;
+  }
+  .flicker{ animation:flicker 0.7s steps(2,end) 3; }
+  @keyframes flicker{
+    0%,100%{opacity:1; filter:brightness(1);}
+    50%{opacity:0.15; filter:brightness(2.4);}
+  }
+
+  /* ---------- Escucha activa (mic) ---------- */
+  .map-btn.listening svg *{ stroke:#FF3B30 !important; fill:#FF3B30 !important; }
+  .map-btn.listening{ box-shadow:0 0 0 3px rgba(255,59,48,0.28), 0 2px 10px rgba(0,0,0,0.35); }
+  .listen-dot{
+    position:absolute; top:-3px; right:-3px; width:9px; height:9px; border-radius:50%;
+    background:#FF3B30; display:none; box-shadow:0 0 0 2px #1c1c1e;
+    animation:dotpulse 1.1s ease-in-out infinite;
+  }
+  .map-btn.listening .listen-dot{ display:block; }
+  @keyframes dotpulse{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  /* Capturado: ubicación lista, esperando a que toques "Yo" — tiene prioridad sobre el rojo */
+  .map-btn.captured svg *{ stroke:#34C759 !important; fill:#34C759 !important; }
+  .map-btn.captured{ box-shadow:0 0 0 3px rgba(52,199,89,0.32), 0 2px 10px rgba(0,0,0,0.35); }
+  .map-btn.captured .listen-dot{
+    display:block; background:#34C759; animation:none; opacity:1;
+  }
+
+  /* ---------- Modales (ajustes) ---------- */
+  .modal-overlay{
+    position:fixed; inset:0; z-index:1000;
+    display:none; align-items:flex-end; justify-content:center;
+    background:rgba(0,0,0,0.55);
+  }
+  .modal-overlay .panel{
+    width:100%; background:#1c1c1e; border-radius:16px 16px 0 0;
+    padding:18px 18px calc(env(safe-area-inset-bottom,16px) + 16px) 18px;
+  }
+  .modal-overlay h3{ margin:2px 0 4px 0; font-size:17px; font-weight:600; text-align:center; }
+  .modal-overlay .hint{ text-align:center; font-size:12.5px; color:#8e8e93; margin-bottom:14px; }
+  .modal-overlay input{
+    width:100%; background:rgba(118,118,128,0.24); border:none; border-radius:10px;
+    padding:12px 14px; color:#fff; font-size:16px; margin-bottom:10px; outline:none;
+  }
+  .modal-overlay input::placeholder{color:#8e8e93;}
+  #suggest-list{ max-height:180px; overflow-y:auto; margin-bottom:10px; }
+  #suggest-list div{
+    padding:10px 12px; border-radius:8px; font-size:15px; color:#fff;
+  }
+  #suggest-list div:active{ background:rgba(255,255,255,0.08); }
+  .modal-actions{ display:flex; gap:10px; margin-top:4px; }
+  .modal-actions button{
+    flex:1; border:none; border-radius:10px; padding:13px 0; font-size:16px; font-weight:600;
+  }
+  .btn-secondary{ background:rgba(118,118,128,0.28); color:#fff; }
+  .btn-primary{ background:var(--tab-blue); color:#fff; }
+  .modal-status{ text-align:center; font-size:12.5px; color:#8e8e93; margin-top:8px; min-height:16px; }
+  .modal-divider{ height:1px; background:var(--divider); margin:16px 0; }
+  .modal-section-label{ font-size:12.5px; color:#8e8e93; margin:0 2px 6px 2px; text-transform:uppercase; letter-spacing:0.4px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="map"></div>
+
+  <div class="brand" id="brandIcon" title="">
+    <svg viewBox="0 0 100 100" width="40" height="40">
+      <defs>
+        <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#e5e5e7"/><stop offset="1" stop-color="#c7c7cb"/>
+        </linearGradient>
+        <linearGradient id="ring1" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#37e08b"/><stop offset="1" stop-color="#0fa968"/>
+        </linearGradient>
+        <linearGradient id="ring2" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#3fe6c8"/><stop offset="1" stop-color="#1fb896"/>
+        </linearGradient>
+        <linearGradient id="dot" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#7fd0ff"/><stop offset="1" stop-color="#0a84ff"/>
+        </linearGradient>
+      </defs>
+      <rect width="100" height="100" rx="22" fill="url(#bg)"/>
+      <circle cx="50" cy="50" r="38" fill="url(#ring1)"/>
+      <path d="M50 12 A38 38 0 0 1 84 42 L50 50 Z" fill="url(#ring2)" opacity="0.85"/>
+      <circle cx="50" cy="50" r="24" fill="#1f8a52" opacity="0.35"/>
+      <circle cx="50" cy="50" r="15" fill="#fff" opacity="0.9"/>
+      <circle cx="50" cy="50" r="11" fill="url(#dot)"/>
+    </svg>
+  </div>
+
+  <div id="dictationBar" style="display:none; position:fixed; right:2px; bottom:2px; z-index:415; width:1px; height:1px; overflow:hidden; opacity:0.02;">
+    <input id="dictationInput" type="text" autocomplete="off" autocorrect="off" spellcheck="false"
+      style="width:1px; height:1px; padding:0; margin:0; border:none; background:transparent; color:transparent; font-size:1px; outline:none;">
+  </div>
+
+  <div class="map-controls">
+    <div class="map-btn" id="listenBtn" style="position:relative;">
+      <svg viewBox="0 0 24 24" fill="none"><path d="M12 2.5a3.2 3.2 0 013.2 3.2v6a3.2 3.2 0 01-6.4 0v-6A3.2 3.2 0 0112 2.5z" stroke="#0A84FF" stroke-width="1.6"/><path d="M6 11v.7a6 6 0 0012 0V11M12 17.7V21M9 21h6" stroke="#0A84FF" stroke-width="1.6" stroke-linecap="round"/></svg>
+      <div class="listen-dot"></div>
+    </div>
+    <div class="map-btn" id="locateBtn">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" fill="#0A84FF"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3" stroke="#0A84FF" stroke-width="2" stroke-linecap="round"/></svg>
+    </div>
+    <div class="map-btn" id="settingsBtn">
+      <svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="2.6" stroke="#0A84FF" stroke-width="1.6"/><path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6L18 18M18 6l-1.4 1.4M7.4 16.6L6 18" stroke="#0A84FF" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </div>
+  </div>
+
+  <div class="sheet-wrap">
+    <div class="sheet" id="sheet">
+      <div class="grabber"></div>
+      <div id="sheetContent"></div>
+    </div>
+
+    <div class="tabbar">
+      <div class="tab active" data-tab="personas">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 12a4 4 0 100-8 4 4 0 000 8zm8 0a3.5 3.5 0 100-7 3.5 3.5 0 000 7zM8 14c-3.3 0-6 1.7-6 4v1.5c0 .8.7 1.5 1.5 1.5h9c.8 0 1.5-.7 1.5-1.5V18c0-2.3-2.7-4-6-4zm8 .3c-.5 0-1 .05-1.5.13 1.5 1 2.5 2.4 2.5 4.07v1.5c0 .18-.02.35-.06.5H21.5c.8 0 1.5-.7 1.5-1.5v-1c0-2.03-2.3-3.7-5-3.7z"/></svg>
+        <span>Personas</span>
+      </div>
+      <div class="tab" data-tab="dispositivos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4" stroke-linecap="round"/></svg>
+        <span>Dispositivos</span>
+      </div>
+      <div class="tab" data-tab="objetos">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.5"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.5"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.5"/></svg>
+        <span>Objetos</span>
+      </div>
+      <div class="tab" data-tab="yo">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 4.5a3.4 3.4 0 110 6.8 3.4 3.4 0 010-6.8zM6.5 18.2A6.9 6.9 0 0112 15.2a6.9 6.9 0 015.5 3 8.4 8.4 0 01-11 0z"/></svg>
+        <span>Yo</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="locate-overlay">
+    <svg class="radar" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="38" fill="#0fa968" opacity="0.25"/>
+      <circle cx="50" cy="50" r="24" fill="#1f8a52" opacity="0.4"/>
+      <circle cx="50" cy="50" r="12" fill="#34C759"/>
+    </svg>
+    <div class="msg" id="locateMsg">Localizando…</div>
+  </div>
+
+  <div id="settings-modal" class="modal-overlay">
+    <div class="panel">
+      <h3>Ajustes</h3>
+      <div class="hint">Configura la palabra clave que activa la escucha</div>
+
+      <div class="modal-section-label">Palabra mágica</div>
+      <input id="magicWordInput" type="text" placeholder="ej. ok" autocomplete="off" autocorrect="off" spellcheck="false">
+
+      <div class="modal-divider"></div>
+
+      <div class="modal-section-label">Escucha invisible en Safari / Firefox</div>
+      <input id="apiKeyInput" type="password" placeholder="Clave de OpenAI (sk-...)" autocomplete="off" autocorrect="off" spellcheck="false">
+      <div style="font-size:11.5px; color:#8e8e93; margin:-4px 2px 10px 2px; line-height:1.4;">
+        Con esto puesto, en Safari/Firefox la escucha es 100% silenciosa (sin teclado). Sin clave, se usa el modo dictado con teclado. La clave se consigue en platform.openai.com y solo se guarda en esta pestaña mientras esté abierta.
+      </div>
+
+      <div class="modal-divider"></div>
+
+      <div class="modal-section-label">Prueba manual (opcional)</div>
+      <input id="cityInput" type="text" placeholder="Escribe una ciudad o país…" autocomplete="off" autocorrect="off" spellcheck="false">
+      <div id="suggest-list"></div>
+
+      <div class="modal-divider"></div>
+
+      <div class="modal-section-label">Depuración del micrófono</div>
+      <div id="debugMic" style="background:rgba(118,118,128,0.16); border-radius:10px; padding:10px 12px; font-size:13px; color:#c7c7cc; line-height:1.5;">
+        <div>Modo: <span id="debugMode">—</span></div>
+        <div>Estado: <span id="debugListening">apagado</span></div>
+        <div>Oyendo ahora: <span id="debugHeard">—</span></div>
+        <div>Última ubicación capturada: <span id="debugCaptured" style="color:#34C759; font-weight:600;">ninguna</span></div>
+      </div>
+
+      <div class="modal-actions">
+        <button id="settings-cancel" class="btn-secondary">Cerrar</button>
+        <button id="settings-save" class="btn-primary">Guardar</button>
+      </div>
+      <div id="settings-status" class="modal-status"></div>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ============ Datos base ============ */
+var deviceName = "Yo";
+var homeLat = 40.4168, homeLng = -3.7038; // fallback: Madrid
+var currentLat = homeLat, currentLng = homeLng;
+var realLocationKnown = false;
+var currentLocationLabel = "Casa";
+var currentTimeLabel = "Ahora";
+
+/* pequeño catálogo local de ciudades por si falla la geocodificación online */
+var CITY_DB = [
+ ["madrid",40.4168,-3.7038],["barcelona",41.3874,2.1686],["valencia",39.4699,-0.3763],
+ ["sevilla",37.3891,-5.9845],["bilbao",43.2630,-2.9350],["zaragoza",41.6488,-0.8891],
+ ["malaga",36.7213,-4.4214],["paris",48.8566,2.3522],["londres",51.5072,-0.1276],
+ ["london",51.5072,-0.1276],["roma",41.9028,12.4964],["berlin",52.5200,13.4050],
+ ["lisboa",38.7223,-9.1393],["amsterdam",52.3676,4.9041],["nueva york",40.7128,-74.0060],
+ ["new york",40.7128,-74.0060],["tokio",35.6762,139.6503],["tokyo",35.6762,139.6503],
+ ["moscu",55.7558,37.6173],["el cairo",30.0444,31.2357],["cairo",30.0444,31.2357],
+ ["sidney",-33.8688,151.2093],["sydney",-33.8688,151.2093],["buenos aires",-34.6037,-58.3816],
+ ["mexico",19.4326,-99.1332],["ciudad de mexico",19.4326,-99.1332],["bogota",4.7110,-74.0721],
+ ["lima",-12.0464,-77.0428],["santiago",-33.4489,-70.6693],["rio de janeiro",-22.9068,-43.1729],
+ ["sao paulo",-23.5505,-46.6333],["miami",25.7617,-80.1918],["los angeles",34.0522,-118.2437],
+ ["chicago",41.8781,-87.6298],["toronto",43.6532,-79.3832],["dubai",25.2048,55.2708],
+ ["estambul",41.0082,28.9784],["istanbul",41.0082,28.9784],["atenas",37.9838,23.7275],
+ ["viena",48.2082,16.3738],["praga",50.0755,14.4378],["dublin",53.3498,-6.2603],
+ ["oslo",59.9139,10.7522],["estocolmo",59.3293,18.0686],["helsinki",60.1699,24.9384],
+ ["varsovia",52.2297,21.0122],["budapest",47.4979,19.0402],["bruselas",50.8503,4.3517],
+ ["copenhague",55.6761,12.5683],["shanghai",31.2304,121.4737],["pekin",39.9042,116.4074],
+ ["beijing",39.9042,116.4074],["hong kong",22.3193,114.1694],["singapur",1.3521,103.8198],
+ ["bangkok",13.7563,100.5018],["seul",37.5665,126.9780],["mumbai",19.0760,72.8777],
+ ["delhi",28.7041,77.1025],["nueva delhi",28.6139,77.2090],["johannesburgo",-26.2041,28.0473],
+ ["ciudad del cabo",-33.9249,18.4241],["casablanca",33.5731,-7.5898],["marrakech",31.6295,-7.9811]
+];
+
+var COUNTRY_TO_CAPITAL = {
+  "francia":"paris","espana":"madrid","españa":"madrid","italia":"roma","alemania":"berlin",
+  "portugal":"lisboa","inglaterra":"londres","reino unido":"londres","holanda":"amsterdam",
+  "paises bajos":"amsterdam","belgica":"bruselas","austria":"viena","suiza":"berna",
+  "grecia":"atenas","irlanda":"dublin","noruega":"oslo","suecia":"estocolmo","finlandia":"helsinki",
+  "polonia":"varsovia","hungria":"budapest","dinamarca":"copenhague","turquia":"estambul",
+  "rusia":"moscu","egipto":"el cairo","china":"pekin","japon":"tokio","corea del sur":"seul",
+  "india":"nueva delhi","singapur":"singapur","tailandia":"bangkok","emiratos arabes":"dubai",
+  "australia":"sidney","estados unidos":"nueva york","ee uu":"nueva york","eeuu":"nueva york",
+  "canada":"toronto","mexico":"ciudad de mexico","argentina":"buenos aires","colombia":"bogota",
+  "peru":"lima","chile":"santiago","brasil":"rio de janeiro","sudafrica":"johannesburgo",
+  "marruecos":"casablanca"
+};
+
+function norm(s){
+  return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim();
+}
+function localLookup(q){
+  var n = norm(q);
+  for (var i=0;i<CITY_DB.length;i++){
+    if (CITY_DB[i][0] === n) return {name:q, lat:CITY_DB[i][1], lng:CITY_DB[i][2]};
+  }
+  for (var i=0;i<CITY_DB.length;i++){
+    if (CITY_DB[i][0].indexOf(n) === 0 || n.indexOf(CITY_DB[i][0])===0) return {name:q, lat:CITY_DB[i][1], lng:CITY_DB[i][2]};
+  }
+  return null;
+}
+async function geocode(q){
+  var n = norm(q);
+  var resolvedName = q;
+  if (COUNTRY_TO_CAPITAL[n]){
+    resolvedName = COUNTRY_TO_CAPITAL[n];
+    resolvedName = resolvedName.charAt(0).toUpperCase()+resolvedName.slice(1);
+  }
+  try{
+    var url = "https://nominatim.openstreetmap.org/search?format=json&limit=1&q=" + encodeURIComponent(resolvedName);
+    var res = await fetch(url, {headers:{"Accept-Language":"es"}});
+    var data = await res.json();
+    if (data && data[0]) return {name:resolvedName, lat:parseFloat(data[0].lat), lng:parseFloat(data[0].lon)};
+  }catch(e){}
+  return localLookup(resolvedName);
+}
+
+/* ============ Mapa (Leaflet + teselas claras estilo Apple Maps) ============ */
+var map = L.map('map', {
+  zoomControl:false, attributionControl:false, worldCopyJump:true
+}).setView([homeLat, homeLng], 12);
+
+var primaryTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  attribution:'', maxZoom:19, subdomains:'abcd'
+}).addTo(map);
+
+/* Respaldo: si las teselas principales no cargan (bloqueo de red, DNS, etc.)
+   se cambia automáticamente a OpenStreetMap tras la primera comprobación. */
+var tilesOk = false;
+primaryTiles.on('tileload', function(){ tilesOk = true; });
+setTimeout(function(){
+  if (!tilesOk){
+    map.removeLayer(primaryTiles);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution:'', maxZoom:19, subdomains:'abc'
+    }).addTo(map);
+  }
+}, 3500);
+
+var meMarker = null, foundMarker = null, pulseMarker = null;
+
+function meIcon(){
+  return L.divIcon({className:'', html:'<div class="me-pin"></div>', iconSize:[22,22]});
+}
+function foundIcon(label){
+  return L.divIcon({
+    className:'',
+    html:'<div style="position:relative; width:22px; height:22px; display:flex; align-items:center; justify-content:center;">'+
+         '<div class="pulse-ring" style="width:22px;height:22px;"></div>'+
+         '<div class="found-pin"></div>'+
+         '</div>',
+    iconSize:[34,34]
+  });
+}
+
+function placeAtHome(){
+  if (meMarker) map.removeLayer(meMarker);
+  meMarker = L.marker([currentLat, currentLng], {icon: meIcon()}).addTo(map);
+  map.setView([currentLat, currentLng], 13, {animate:true});
+}
+placeAtHome();
+
+/* Desplaza una coordenada real un poco al azar (radio en metros) para no
+   mostrar nunca el punto exacto donde está el usuario, solo la zona cercana */
+function fuzzCoords(lat, lng, radiusMeters){
+  var r = radiusMeters / 111300; // grados de latitud aprox.
+  var u = Math.random(), v = Math.random();
+  var w = r * Math.sqrt(u);
+  var t = 2 * Math.PI * v;
+  var dx = w * Math.cos(t) / Math.cos(lat * Math.PI / 180);
+  var dy = w * Math.sin(t);
+  return { lat: lat + dy, lng: lng + dx };
+}
+
+/* intenta ubicación real del dispositivo (aproximada, nunca exacta) */
+if (navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(function(pos){
+    var fuzzed = fuzzCoords(pos.coords.latitude, pos.coords.longitude, 500);
+    currentLat = fuzzed.lat; currentLng = fuzzed.lng;
+    homeLat = currentLat; homeLng = currentLng;
+    realLocationKnown = true; currentLocationLabel = "Casa";
+    placeAtHome();
+    renderSheet();
+  }, function(){ /* sin permiso: se queda el valor por defecto */ }, {enableHighAccuracy:false, timeout:8000});
+}
+
+document.getElementById('locateBtn').addEventListener('click', function(){
+  map.setView([currentLat, currentLng], 14, {animate:true});
+});
+
+/* ============ Pestañas / hoja inferior ============ */
+/* Solo el botón "Yo" hace algo: espera 2s en silencio y dispara el efecto mágico
+   (la pestaña "Dispositivos" se abre sola al final, como revelación).
+   Personas / Dispositivos / Objetos quedan inertes (solo decorativos). */
+var activeTab = 'dispositivos';
+var tabs = document.querySelectorAll('.tab');
+var yoTab = document.querySelector('.tab[data-tab="yo"]');
+
+yoTab.addEventListener('click', function(){
+  if (!pendingLocationTerm) return; // sin ubicación capturada, no hace nada visible
+  var term = pendingLocationTerm;
+  pendingLocationTerm = null;
+  updateCaptureUI(); // el botón del micro vuelve a su color normal (deja de estar en verde)
+  setTimeout(async function(){
+    var place = await geocode(term);
+    if (place) runFindEffect(place);
+  }, 2000);
+});
+
+document.querySelector('.tab[data-tab="dispositivos"]').classList.add('active');
+document.querySelector('.tab[data-tab="personas"]').classList.remove('active');
+
+var PEOPLE = [
+  {emoji:"🧔", bg:"#3a3a3c"},
+  {emoji:"👦", bg:"#2c4a6e"},
+  {emoji:"👩", bg:"#5a3a52"}
+];
+var OBJECTS = [{name:"Mis llaves", icon:"🔑", status:"Localizando…"}];
+
+function renderSheet(){
+  var el = document.getElementById('sheetContent');
+  if (activeTab === 'personas'){
+    var avatars = PEOPLE.map(function(p){
+      return '<div class="avatar" style="background:'+p.bg+'">'+p.emoji+'</div>';
+    }).join('');
+    el.innerHTML =
+      '<div class="sheet-header">Personas</div>'+
+      '<div class="sheet-body">'+
+        '<div class="people-row">'+avatars+'</div>'+
+        '<div class="share-btn">Empezar a compartir mi ubicación…</div>'+
+      '</div>';
+  } else if (activeTab === 'dispositivos'){
+    el.innerHTML =
+      '<div class="sheet-header">Dispositivos</div>'+
+      '<div class="sheet-body">'+
+        '<div class="card">'+
+          '<div class="list-row" id="deviceRow">'+
+            '<div class="icon-badge" style="background:transparent;"><svg viewBox="0 0 24 24" width="30" height="30" fill="#fff" opacity="0.92"><rect x="6.5" y="1.5" width="11" height="21" rx="2.2" fill="none" stroke="#8e8e93" stroke-width="1.3"/><rect x="7.3" y="3.6" width="9.4" height="15.8" fill="#0A84FF" opacity="0.18"/></svg></div>'+
+            '<div class="row-text">'+
+              '<div class="row-title">'+deviceName+'</div>'+
+            '</div>'+
+            '<div class="row-chev">›</div>'+
+          '</div>'+
+        '</div>'+
+      '</div>';
+  } else if (activeTab === 'objetos'){
+    var rows = OBJECTS.map(function(o){
+      return '<div class="list-row"><div class="icon-badge round" style="background:#3a3a3c; font-size:16px;">'+o.icon+'</div>'+
+        '<div class="row-text"><div class="row-title">'+o.name+'</div><div class="row-sub">'+o.status+'</div></div>'+
+        '<div class="row-chev">›</div></div>';
+    }).join('');
+    el.innerHTML =
+      '<div class="sheet-header">Objetos</div>'+
+      '<div class="sheet-body"><div class="card">'+rows+'</div></div>';
+  } else if (activeTab === 'yo'){
+    el.innerHTML =
+      '<div class="sheet-header">Yo</div>'+
+      '<div class="sheet-body">'+
+        '<div class="card">'+
+          '<div class="card-head"><div class="icon-badge round" style="background:#0A84FF;"><svg viewBox="0 0 24 24" width="15" height="15" fill="#fff"><path d="M2 12l19-9-9 19-2-8z"/></svg></div> Mi ubicación</div>'+
+          '<div class="kv-row"><div class="kv-label">Ubicación</div><div class="kv-value">'+currentLocationLabel+' ›</div></div>'+
+          '<div class="kv-row"><div class="kv-label">De</div><div class="kv-value">Este iPhone</div></div>'+
+          '<div class="kv-row"><div class="kv-label">Compartir mi ubicación</div><div class="toggle on"></div></div>'+
+        '</div>'+
+        '<div class="card">'+
+          '<div class="card-head"><div class="icon-badge round" style="background:#48484a;">🛰️</div> Mi ubicación vía satélite</div>'+
+          '<div class="kv-row"><div class="kv-label">No disponible</div><div class="kv-value link">Finalizar configuración ›</div></div>'+
+        '</div>'+
+        '<div class="card">'+
+          '<div class="card-head"><div class="icon-badge round" style="background:#FF453A;">🔔</div> Notificaciones</div>'+
+          '<div class="kv-row"><div class="kv-label">Permitir solicitudes de amistad</div><div class="toggle on"></div></div>'+
+        '</div>'+
+      '</div>';
+  }
+}
+renderSheet();
+
+/* ============ Efecto mágico: localizar ciudad secreta ============ */
+var overlay = document.getElementById('locate-overlay');
+var appEl = document.getElementById('app');
+
+function runFindEffect(place){
+  overlay.style.display = 'flex';
+  appEl.classList.add('flicker');
+  document.getElementById('locateMsg').textContent = 'Localizando…';
+
+  setTimeout(function(){
+    appEl.classList.remove('flicker');
+    overlay.style.display = 'none';
+
+    currentLat = place.lat; currentLng = place.lng;
+    currentLocationLabel = place.name.charAt(0).toUpperCase()+place.name.slice(1);
+    currentTimeLabel = "Ahora";
+
+    if (meMarker){ map.removeLayer(meMarker); meMarker = null; }
+    map.flyTo([place.lat, place.lng], 12, {animate:true, duration:1.6});
+
+    setTimeout(function(){
+      meMarker = L.marker([place.lat, place.lng], {icon: foundIcon()}).addTo(map);
+      // activar pestaña Dispositivos para revelar el resultado
+      tabs.forEach(function(x){x.classList.remove('active');});
+      document.querySelector('.tab[data-tab="dispositivos"]').classList.add('active');
+      activeTab = 'dispositivos';
+      renderSheet();
+    }, 1500);
+  }, 1400);
+}
+
+/* ============ Ajustes: palabra mágica + clave de escucha invisible ============ */
+var magicWord = 'ok';
+var openaiApiKey = '';
+var settingsModal = document.getElementById('settings-modal');
+var magicWordInput = document.getElementById('magicWordInput');
+var apiKeyInput = document.getElementById('apiKeyInput');
+var cityInput = document.getElementById('cityInput');
+var suggestList = document.getElementById('suggest-list');
+var settingsStatus = document.getElementById('settings-status');
+
+var settingsRefreshTimer = null;
+function openSettingsModal(){
+  settingsModal.style.display = 'flex';
+  magicWordInput.value = magicWord;
+  apiKeyInput.value = openaiApiKey;
+  cityInput.value = '';
+  suggestList.innerHTML = '';
+  settingsStatus.textContent = '';
+  updateDebugUI();
+  settingsRefreshTimer = setInterval(updateDebugUI, 500);
+}
+function closeSettingsModal(){
+  settingsModal.style.display = 'none';
+  if (settingsRefreshTimer){ clearInterval(settingsRefreshTimer); settingsRefreshTimer = null; }
+}
+
+document.getElementById('settingsBtn').addEventListener('click', openSettingsModal);
+document.getElementById('settings-cancel').addEventListener('click', closeSettingsModal);
+settingsModal.addEventListener('click', function(e){ if (e.target === settingsModal) closeSettingsModal(); });
+
+document.getElementById('settings-save').addEventListener('click', function(){
+  var w = magicWordInput.value.trim();
+  if (w) magicWord = w;
+  openaiApiKey = apiKeyInput.value.trim();
+  settingsStatus.textContent = 'Palabra mágica: "'+magicWord+'"' + (openaiApiKey ? ' · escucha invisible activada' : '');
+  updateDebugUI();
+});
+
+cityInput.addEventListener('input', function(){
+  var q = norm(cityInput.value);
+  suggestList.innerHTML = '';
+  if (q.length < 2) return;
+  var matches = CITY_DB.filter(function(c){ return c[0].indexOf(q) === 0; }).slice(0,5);
+  matches.forEach(function(m){
+    var div = document.createElement('div');
+    div.textContent = m[0].replace(/\b\w/g, function(c){return c.toUpperCase();});
+    div.addEventListener('click', function(){
+      cityInput.value = div.textContent;
+      suggestList.innerHTML = '';
+    });
+    suggestList.appendChild(div);
+  });
+});
+/* Prueba manual: escribe una ciudad/país y toca la zona de disparo tras cerrar */
+cityInput.addEventListener('change', function(){
+  var q = cityInput.value.trim();
+  if (q) pendingLocationTerm = q;
+});
+
+/* ============ Escucha por voz — 100% Chrome / Safari / Firefox ============
+   Chrome (y derivados) implementan la API SpeechRecognition: escucha
+   automática en segundo plano, sin teclado.
+   Safari y Firefox NO tienen esa API (limitación real de esos navegadores,
+   no del código). Para que funcione igualmente, usamos el dictado nativo
+   del sistema: un campo de texto que, al enfocarlo, permite pulsar el
+   micrófono del teclado (iOS/Android) o activar el dictado del sistema
+   (Fn Fn en Mac) y transcribe ahí. Se detecta el modo disponible solo. */
+var SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+var voiceMode = SpeechRecognitionAPI ? 'native' : 'dictation';
+
+var recognition = null;
+var isListening = false;
+var pendingLocationTerm = null;
+var lastHeardRaw = '';   // para depuración: último texto reconocido
+var lastCapturedAt = 0;  // para depuración: cuándo se capturó algo
+
+var STOPWORDS = ["eh","ehh","pues","vale","que","el","la","los","las","de","en","es","um","hmm","a","y","o","un","una"];
+
+/* Memoria de las últimas palabras oídas. El reconocedor a veces separa
+   "Francia" y "ok" en dos resultados distintos (por la pausa al hablar),
+   así que no miramos solo el fragmento actual: vamos acumulando palabra
+   a palabra y, en cuanto aparece la palabra mágica, miramos hacia atrás
+   en esta memoria, venga de donde venga. */
+var wordBuffer = [];
+
+function clean(w){ return w.replace(/[^\p{L}\p{N}]/gu, ''); }
+
+/* Vibración corta de confirmación al capturar la ciudad. No soportada en
+   Safari de iPhone (Apple no implementa navigator.vibrate en web) — en ese
+   caso simplemente no hace nada, sin dar error. En Chrome/Android sí vibra. */
+function vibrateConfirm(){
+  try{
+    if (navigator.vibrate) navigator.vibrate([40, 30, 40]);
+  }catch(e){}
+}
+
+function processTranscript(transcript){
+  lastHeardRaw = transcript;
+  var words = norm(transcript).split(/\s+/).map(clean).filter(Boolean);
+  var nw = clean(norm(magicWord));
+  if (!nw){ updateDebugUI(); return; }
+
+  words.forEach(function(w){
+    if (w === nw){
+      var candidates = wordBuffer.filter(function(x){ return STOPWORDS.indexOf(x) === -1; });
+      var take = candidates.slice(Math.max(0, candidates.length - 3));
+      if (take.length){
+        var raw = take.join(' ');
+        pendingLocationTerm = raw.replace(/\b\w/g, function(c){ return c.toUpperCase(); });
+        lastCapturedAt = Date.now();
+        vibrateConfirm();
+      }
+      wordBuffer = [];
+    } else {
+      wordBuffer.push(w);
+      if (wordBuffer.length > 8) wordBuffer.shift();
+    }
+  });
+  updateDebugUI();
+}
+
+function setListeningUI(on){
+  var btn = document.getElementById('listenBtn');
+  if (on) btn.classList.add('listening'); else btn.classList.remove('listening');
+  updateDebugUI();
+}
+
+/* Pinta el botón del micrófono en verde en cuanto hay una ciudad capturada
+   y lista, y en rojo mientras solo está escuchando sin haber pillado nada. */
+function updateCaptureUI(){
+  var btn = document.getElementById('listenBtn');
+  if (!btn) return;
+  if (pendingLocationTerm){
+    btn.classList.add('captured');
+  } else {
+    btn.classList.remove('captured');
+  }
+}
+
+function updateDebugUI(){
+  updateCaptureUI();
+  var elListening = document.getElementById('debugListening');
+  var elHeard = document.getElementById('debugHeard');
+  var elCaptured = document.getElementById('debugCaptured');
+  var elMode = document.getElementById('debugMode');
+  if (!elListening) return; // el modal aún no está en el DOM la primera vez
+  elListening.textContent = isListening ? 'escuchando…' : 'apagado';
+  elListening.style.color = isListening ? '#34C759' : '#8e8e93';
+  elHeard.textContent = lastHeardRaw ? lastHeardRaw : '—';
+  elCaptured.textContent = pendingLocationTerm
+    ? pendingLocationTerm
+    : (lastCapturedAt ? '(usada ya / ninguna pendiente)' : 'ninguna');
+  if (elMode){
+    elMode.textContent = voiceMode === 'native'
+      ? 'reconocimiento automático (Chrome)'
+      : 'dictado del teclado (Safari / Firefox)';
+  }
+}
+
+/* ---------- Modo nativo: Chrome / Edge / navegadores basados en Chromium ---------- */
+var lastResultAt = 0;
+var restartTimer = null;
+var watchdogTimer = null;
+
+function startNativeListening(){
+  isListening = true;
+  setListeningUI(true);
+  launchRecognitionInstance();
+
+  // Vigilante: si llevamos más de 8s "escuchando" sin recibir NADA
+  // (ni resultados provisionales), lo más probable es que el motor de
+  // reconocimiento se haya caído en silencio -> se reinicia solo.
+  clearInterval(watchdogTimer);
+  watchdogTimer = setInterval(function(){
+    if (!isListening) return;
+    if (Date.now() - lastResultAt > 8000){
+      lastHeardRaw = '(sin señal, reiniciando el micrófono…)';
+      updateDebugUI();
+      launchRecognitionInstance();
+    }
+  }, 4000);
+}
+
+function launchRecognitionInstance(){
+  if (recognition){ try{ recognition.onend = null; recognition.stop(); }catch(e){} }
+  clearTimeout(restartTimer);
+
+  recognition = new SpeechRecognitionAPI();
+  recognition.lang = 'es-ES';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+
+  recognition.onstart = function(){
+    lastResultAt = Date.now();
+  };
+  recognition.onresult = function(event){
+    lastResultAt = Date.now();
+    for (var i = event.resultIndex; i < event.results.length; i++){
+      if (event.results[i].isFinal){
+        processTranscript(event.results[i][0].transcript);
+      } else {
+        lastHeardRaw = event.results[i][0].transcript;
+        updateDebugUI();
+      }
+    }
+  };
+  recognition.onend = function(){
+    if (isListening){
+      // Chrome necesita un pequeño respiro antes de poder reiniciar,
+      // si no lo intentas al instante falla en silencio y se queda "muerto".
+      restartTimer = setTimeout(function(){
+        if (isListening) launchRecognitionInstance();
+      }, 300);
+    } else {
+      setListeningUI(false);
+    }
+  };
+  recognition.onerror = function(e){
+    lastHeardRaw = 'Error: ' + e.error;
+    updateDebugUI();
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed'){
+      isListening = false;
+      clearInterval(watchdogTimer);
+      setListeningUI(false);
+    }
+    // otros errores (network, no-speech, audio-capture…) los deja pasar:
+    // onend se disparará después y se reintentará solo.
+  };
+
+  try{
+    recognition.start();
+  }catch(e){
+    // ya había una instancia arrancando: reintenta en breve
+    restartTimer = setTimeout(function(){
+      if (isListening) launchRecognitionInstance();
+    }, 400);
+  }
+}
+
+function stopNativeListening(){
+  isListening = false;
+  clearInterval(watchdogTimer);
+  clearTimeout(restartTimer);
+  setListeningUI(false);
+  if (recognition){ try{ recognition.onend = null; recognition.stop(); }catch(e){} }
+}
+
+/* ---------- Modo dictado: Safari / Firefox / resto ----------
+   Se enfoca un campo de texto. El usuario pulsa el 🎤 del teclado (móvil)
+   o activa el dictado del sistema (Mac: Fn Fn) y habla. El dictado no para
+   solo, así que NO esperamos a una pausa: en cuanto el texto crece,
+   miramos solo la parte nueva (delta) al instante. */
+var dictationBar = document.getElementById('dictationBar');
+var dictationInput = document.getElementById('dictationInput');
+var dictationProcessedLen = 0;
+
+function startDictationListening(){
+  isListening = true;
+  setListeningUI(true);
+  dictationBar.style.display = 'block';
+  dictationInput.value = '';
+  dictationProcessedLen = 0;
+  dictationInput.focus();
+}
+function stopDictationListening(){
+  isListening = false;
+  setListeningUI(false);
+  dictationBar.style.display = 'none';
+  dictationInput.blur();
+  dictationInput.value = '';
+  dictationProcessedLen = 0;
+}
+dictationInput.addEventListener('input', function(){
+  var val = dictationInput.value;
+  lastHeardRaw = val;
+
+  if (val.length < dictationProcessedLen) dictationProcessedLen = 0; // se borró/reinició
+  var delta = val.slice(dictationProcessedLen);
+  dictationProcessedLen = val.length;
+
+  var hadPending = pendingLocationTerm;
+  if (delta.trim()) processTranscript(delta);
+  lastHeardRaw = val;
+  updateDebugUI();
+
+  if (!hadPending && pendingLocationTerm){
+    // se acaba de capturar la ubicación: paramos solos, ya no hace falta seguir grabando
+    stopDictationListening();
+  }
+
+  // si el campo empieza a crecer demasiado, lo vaciamos (ya está todo procesado)
+  if (dictationInput.value.length > 200){
+    dictationInput.value = '';
+    dictationProcessedLen = 0;
+  }
+});
+
+/* ---------- Selector de modo ---------- */
+function startListening(){
+  if (voiceMode === 'native') startNativeListening();
+  else startDictationListening();
+}
+function stopListening(){
+  if (voiceMode === 'native') stopNativeListening();
+  else stopDictationListening();
+}
+
+document.getElementById('listenBtn').addEventListener('click', function(){
+  if (isListening) stopListening(); else startListening();
+});
+
+</script>
+</body>
+</html>
