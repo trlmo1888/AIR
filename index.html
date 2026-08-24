@@ -502,6 +502,22 @@ async function geocode(q){
   return local;
 }
 
+/* Prueba la frase capturada tal cual, y si no encuentra nada, va quitando
+   palabras por delante una a una y reintentando (por si antes de la ciudad
+   se coló algo de la conversación, como "eh, digo, París"). Así, aunque
+   hables un buen rato antes de decir la ciudad, siempre acaba aislando la
+   parte final que sí es una ciudad real. */
+async function geocodeSmart(term){
+  var words = term.trim().split(/\s+/).filter(Boolean);
+  for (var start = 0; start < words.length; start++){
+    var attempt = words.slice(start).join(' ');
+    if (!attempt) continue;
+    var result = await geocode(attempt);
+    if (result) return result;
+  }
+  return null;
+}
+
 /* ============ Mapa (Leaflet + teselas claras estilo Apple Maps) ============ */
 var map = L.map('map', {
   zoomControl:false, attributionControl:false, worldCopyJump:true
@@ -589,7 +605,7 @@ yoTab.addEventListener('click', function(){
   pendingLocationTerm = null;
   updateCaptureUI(); // el botón del micro vuelve a su color normal (deja de estar en verde)
   setTimeout(async function(){
-    var place = await geocode(term);
+    var place = await geocodeSmart(term);
     if (place) runFindEffect(place);
   }, 2000);
 });
@@ -804,8 +820,12 @@ function processTranscript(transcript){
         wordBuffer = [];
         return;
       }
+      // Cogemos SOLO la última palabra dicha justo antes de la palabra
+      // mágica (saltando alguna palabra de relleno si la última fuera eso,
+      // tipo "eh" o "vale") — ni más ni menos. Así, digas lo que digas antes
+      // en la conversación, nunca se cuela nada que no sea esa palabra.
       var candidates = wordBuffer.filter(function(x){ return STOPWORDS.indexOf(x) === -1; });
-      var take = candidates.slice(Math.max(0, candidates.length - 3));
+      var take = candidates.slice(Math.max(0, candidates.length - 1));
       if (take.length){
         var raw = take.join(' ');
         pendingLocationTerm = raw.replace(/\b\w/g, function(c){ return c.toUpperCase(); });
@@ -818,7 +838,7 @@ function processTranscript(transcript){
       wordBuffer = [];
     } else {
       wordBuffer.push(w);
-      if (wordBuffer.length > 8) wordBuffer.shift();
+      if (wordBuffer.length > 3) wordBuffer.shift();
     }
   });
   updateDebugUI();
