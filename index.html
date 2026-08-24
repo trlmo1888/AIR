@@ -820,12 +820,13 @@ function processTranscript(transcript){
         wordBuffer = [];
         return;
       }
-      // Cogemos SOLO la última palabra dicha justo antes de la palabra
-      // mágica (saltando alguna palabra de relleno si la última fuera eso,
-      // tipo "eh" o "vale") — ni más ni menos. Así, digas lo que digas antes
-      // en la conversación, nunca se cuela nada que no sea esa palabra.
+      // Cogemos hasta las 3 últimas palabras dichas antes de la palabra
+      // mágica (para que quepan ciudades de dos o tres palabras, tipo
+      // "Nueva York" o "Ciudad de México"). Si se coló algo de la
+      // conversación por delante, geocodeSmart() se encarga después de
+      // ir recortando hasta quedarse solo con el sitio real.
       var candidates = wordBuffer.filter(function(x){ return STOPWORDS.indexOf(x) === -1; });
-      var take = candidates.slice(Math.max(0, candidates.length - 1));
+      var take = candidates.slice(Math.max(0, candidates.length - 3));
       if (take.length){
         var raw = take.join(' ');
         pendingLocationTerm = raw.replace(/\b\w/g, function(c){ return c.toUpperCase(); });
@@ -838,7 +839,7 @@ function processTranscript(transcript){
       wordBuffer = [];
     } else {
       wordBuffer.push(w);
-      if (wordBuffer.length > 3) wordBuffer.shift();
+      if (wordBuffer.length > 6) wordBuffer.shift();
     }
   });
   updateDebugUI();
