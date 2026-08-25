@@ -890,7 +890,6 @@ function updateDebugUI(){
 
 /* ---------- Modo nativo: Chrome / Edge / navegadores basados en Chromium ---------- */
 var lastResultAt = 0;
-var interimProcessedLen = {};
 var restartTimer = null;
 var watchdogTimer = null;
 
@@ -924,34 +923,21 @@ function launchRecognitionInstance(){
 
   recognition.onstart = function(){
     lastResultAt = Date.now();
-    interimProcessedLen = {};
   };
   recognition.onresult = function(event){
     lastResultAt = Date.now();
     for (var i = event.resultIndex; i < event.results.length; i++){
       var transcript = event.results[i][0].transcript;
       if (event.results[i].isFinal){
-        var prevLen = interimProcessedLen[i] || 0;
-        var delta = transcript.slice(prevLen);
-        if (delta.trim()) processTranscript(delta);
-        delete interimProcessedLen[i];
-        lastHeardRaw = transcript;
-        updateDebugUI();
-      } else {
-        // No esperamos a que la frase se "cierre": en cuanto el motor
-        // reconoce una palabra nueva (aunque sea provisional), la miramos
-        // ya mismo. Así no se escapa la palabra mágica por una pausa.
-        var prevLen = interimProcessedLen[i] || 0;
-        if (transcript.length >= prevLen){
-          var delta = transcript.slice(prevLen);
-          interimProcessedLen[i] = transcript.length;
-          if (delta.trim()) processTranscript(delta);
-        } else {
-          interimProcessedLen[i] = 0; // el motor revisó/acortó el texto: reiniciamos el conteo
-        }
-        lastHeardRaw = transcript;
-        updateDebugUI();
+        // Solo procesamos la versión YA CORREGIDA de la frase (la que el
+        // motor entrega cuando ha terminado de asentarla). Las versiones
+        // provisionales por el camino a veces trocean mal una palabra
+        // (p. ej. "Australia" → "Aus" + "Italia"), así que las ignoramos
+        // para la captura y solo las usamos para el aviso en pantalla.
+        processTranscript(transcript);
       }
+      lastHeardRaw = transcript;
+      updateDebugUI();
     }
   };
   recognition.onend = function(){
