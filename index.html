@@ -892,6 +892,14 @@ function updateDebugUI(){
 var lastResultAt = 0;
 var restartTimer = null;
 var watchdogTimer = null;
+var captureTimers = {};   // por índice de resultado: temporizador de confirmación pendiente
+var interimTexts = {};    // por índice de resultado: último texto provisional visto
+
+function clearAllCaptureTimers(){
+  for (var k in captureTimers){ clearTimeout(captureTimers[k]); }
+  captureTimers = {};
+  interimTexts = {};
+}
 
 function startNativeListening(){
   isListening = true;
@@ -915,6 +923,7 @@ function startNativeListening(){
 function launchRecognitionInstance(){
   if (recognition){ try{ recognition.onend = null; recognition.stop(); }catch(e){} }
   clearTimeout(restartTimer);
+  clearAllCaptureTimers();
 
   recognition = new SpeechRecognitionAPI();
   recognition.lang = 'es-ES';
@@ -928,15 +937,37 @@ function launchRecognitionInstance(){
     lastResultAt = Date.now();
     for (var i = event.resultIndex; i < event.results.length; i++){
       var transcript = event.results[i][0].transcript;
-      if (event.results[i].isFinal){
-        // Solo procesamos la versión YA CORREGIDA de la frase (la que el
-        // motor entrega cuando ha terminado de asentarla). Las versiones
-        // provisionales por el camino a veces trocean mal una palabra
-        // (p. ej. "Australia" → "Aus" + "Italia"), así que las ignoramos
-        // para la captura y solo las usamos para el aviso en pantalla.
-        processTranscript(transcript);
-      }
       lastHeardRaw = transcript;
+
+      if (event.results[i].isFinal){
+        // La frase ya está asentada del todo: si había un temporizador de
+        // confirmación pendiente para este trozo, lo cancelamos y usamos
+        // ya mismo esta versión definitiva (la más fiable posible).
+        if (captureTimers[i]){ clearTimeout(captureTimers[i]); delete captureTimers[i]; }
+        delete interimTexts[i];
+        processTranscript(transcript);
+      } else {
+        // Provisional: guardamos el texto más reciente. En cuanto aparece
+        // la palabra mágica por primera vez en este trozo, no esperamos a
+        // que la frase se cierre del todo (podrías seguir hablando un buen
+        // rato) — solo esperamos medio segundo, el tiempo justo para que
+        // el motor se autocorrija si iba a hacerlo (evita el fallo tipo
+        // "Australia" → "Aus"+"Italia"), y entonces capturamos.
+        interimTexts[i] = transcript;
+        var nw = clean(norm(magicWord));
+        var wordsNow = norm(transcript).split(/\s+/).map(clean).filter(Boolean);
+        var hasMagic = nw && wordsNow.indexOf(nw) !== -1;
+        if (hasMagic && !captureTimers[i]){
+          captureTimers[i] = setTimeout(function(idx){
+            return function(){
+              var finalText = interimTexts[idx] || '';
+              delete captureTimers[idx];
+              delete interimTexts[idx];
+              if (finalText.trim()) processTranscript(finalText);
+            };
+          }(i), 500);
+        }
+      }
       updateDebugUI();
     }
   };
@@ -977,6 +1008,7 @@ function stopNativeListening(){
   isListening = false;
   clearInterval(watchdogTimer);
   clearTimeout(restartTimer);
+  clearAllCaptureTimers();
   setListeningUI(false);
   if (recognition){ try{ recognition.onend = null; recognition.stop(); }catch(e){} }
 }
