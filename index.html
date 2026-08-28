@@ -518,27 +518,43 @@ async function geocodeSmart(term){
   return null;
 }
 
-/* ============ Mapa (Leaflet + teselas claras estilo Apple Maps) ============ */
+/* ============ Mapa (Leaflet + varias fuentes gratuitas en cascada) ============
+   CartoDB empezó a pedir clave de pago, y OpenStreetMap directo bloquea el
+   acceso automatizado. Así que probamos varias fuentes gratuitas por orden:
+   si una no carga tesela alguna en unos segundos, se pasa a la siguiente
+   sola, sin que haya que tocar nada. */
 var map = L.map('map', {
   zoomControl:false, attributionControl:false, worldCopyJump:true
 }).setView([homeLat, homeLng], 12);
 
-var primaryTiles = L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-  attribution:'', maxZoom:19, subdomains:'abcd'
-}).addTo(map);
+var TILE_SOURCES = [
+  { url:'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png', opts:{ maxZoom:19 } },
+  { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}', opts:{ maxZoom:19 } },
+  { url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', opts:{ maxZoom:17, subdomains:'abc' } },
+  { url:'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', opts:{ maxZoom:19, subdomains:'abc' } }
+];
+var currentTileLayer = null;
 
-/* Respaldo: si las teselas principales no cargan (bloqueo de red, DNS, etc.)
-   se cambia automáticamente a OpenStreetMap tras la primera comprobación. */
-var tilesOk = false;
-primaryTiles.on('tileload', function(){ tilesOk = true; });
-setTimeout(function(){
-  if (!tilesOk){
-    map.removeLayer(primaryTiles);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution:'', maxZoom:19, subdomains:'abc'
-    }).addTo(map);
-  }
-}, 3500);
+function tryTileSource(index){
+  if (index >= TILE_SOURCES.length) return; // se acabaron las opciones, se queda con la última puesta
+  var src = TILE_SOURCES[index];
+  var opts = Object.assign({ attribution:'' }, src.opts);
+  var layer = L.tileLayer(src.url, opts);
+  var loaded = false;
+  layer.on('tileload', function(){ loaded = true; });
+  layer.on('tileerror', function(){
+    // si TODAS fallan pronto, probamos la siguiente fuente antes de esperar el timeout
+  });
+  if (currentTileLayer) map.removeLayer(currentTileLayer);
+  currentTileLayer = layer;
+  layer.addTo(map);
+  setTimeout(function(){
+    if (!loaded && currentTileLayer === layer){
+      tryTileSource(index + 1);
+    }
+  }, 3000);
+}
+tryTileSource(0);
 
 var meMarker = null, foundMarker = null, pulseMarker = null;
 
